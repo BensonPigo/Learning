@@ -1,0 +1,48 @@
+graph LR
+    subgraph "事件觸發"
+        E1["Control.Click"]
+        E2["Proxy事件<br/>攔截"]
+    end
+
+    subgraph "ControlHelp 處理"
+        C1["Control_Click"]
+        C2{"是否<br/>HelpMode"}
+        C3["ShowHelpText<br/>遞迴"]
+    end
+
+    subgraph "顯示說明視窗"
+        H1["new HelpDefinition"]
+        H2["傳入參數<br/>formName<br/>controlName<br/>pass1ID"]
+        H3["ShowDialog"]
+    end
+
+    subgraph "載入說明資料"
+        D1["AppService<br/>GetHelpDefinition"]
+        D2["Repository<br/>GetByControl"]
+        D3["SQL查詢<br/>Aggregate Root"]
+        D4["Hydration<br/>還原Entity"]
+    end
+
+    E1 --> E2
+    E2 --> C1
+    C1 --> C2
+    C2 -->|是| C3
+    C2 -->|否| Return["直接返回"]
+    
+    C3 --> H1
+    H1 --> H2
+    H2 --> H3
+    H3 --> D1
+    D1 --> D2
+    D2 --> D3
+    D3 --> D4
+
+    classDef eventStyle fill:#e8eaf6,stroke:#3f51b5,stroke-width:2px
+    classDef coordStyle fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef formStyle fill:#e0f7fa,stroke:#00838f,stroke-width:2px
+    classDef dataStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px
+
+    class E1,E2 eventStyle
+    class C1,C2,C3 coordStyle
+    class H1,H2,H3 formStyle
+    class D1,D2,D3,D4 dataStyle
