@@ -1,0 +1,57 @@
+graph LR
+    subgraph "觸發禁用"
+        T1["再次點擊<br/>HelpButton"]
+        T2["Form關閉"]
+    end
+
+    subgraph "DisableHelpMode"
+        D1["更新狀態<br/>_isHelpMode=false"]
+        D2["ResetHelpModeState"]
+        D3["RestoreOriginalState"]
+        D4["ClearFormData"]
+    end
+
+    subgraph "還原UI"
+        U1["還原控制項顏色"]
+        U2["還原Grid樣式"]
+        U3["移除Proxy事件"]
+        U4["還原原始Click事件"]
+        U5["設定Cursor=Default"]
+    end
+
+    subgraph "清理資源"
+        C1["移除Form狀態"]
+        C2["清空顏色快取"]
+        C3["清空事件快取"]
+        C4["移除Grid樣式"]
+        C5["GC回收"]
+    end
+
+    T1 --> D1
+    T2 --> D1
+    
+    D1 --> D2
+    D2 --> D3
+    D3 --> D4
+    
+    D3 --> U1
+    D3 --> U2
+    D3 --> U3
+    D3 --> U4
+    D3 --> U5
+    
+    D4 --> C1
+    D4 --> C2
+    D4 --> C3
+    D4 --> C4
+    C4 --> C5
+
+    classDef triggerStyle fill:#ffebee,stroke:#b71c1c,stroke-width:2px
+    classDef disableStyle fill:#e3f2fd,stroke:#0d47a1,stroke-width:2px
+    classDef restoreStyle fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    classDef cleanStyle fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+
+    class T1,T2 triggerStyle
+    class D1,D2,D3,D4 disableStyle
+    class U1,U2,U3,U4,U5 restoreStyle
+    class C1,C2,C3,C4,C5 cleanStyle
