@@ -1,75 +1,119 @@
 sequenceDiagram
-    autonumber
-    participant User as 使用者
-    participant Form as Form表單
-    participant HM as HelpManager
-    participant HB as HelpButton
-    participant CH as ControlHelp
-    participant QS as SqlHelpQueryService
-    participant HD as HelpDefinition Form
-    participant AS as HelpApplicationService
-    participant Repo as SqlRepository
-    participant DB as Database
+    actor User as 👤 使用者
+    participant Form as 📝 WinForm
+    participant HM as 🔧 HelpManager
+    participant HB as 🔘 HelpButton
+    participant CH as 🎛️ ControlHelp
+    participant QS as 🔍 QueryService
+    participant HD as 📋 HelpDefinition
+    participant AS as ⚙️ AppService
+    participant Repo as 💾 Repository
+    participant DB as 🗄️ Database
 
-    Note over User,DB: 初始化階段
-    Form->>HM: Initialize(pass1ID)
-    HM->>HM: 檢查EnableHelpMode
-    HM->>HB: new HelpButton(form, pass1ID)
-    HM->>Form: 加入HelpButton & Label
-    HM->>Form: 註冊事件(ControlAdded, FormClosed)
+    rect rgb(240, 248, 255)
+        Note over User,DB: Phase 1: 系統初始化
+        Form->>HM: Initialize(pass1ID)
+        activate HM
+        HM->>HM: 檢查EnableHelpMode配置
+        HM->>HB: new HelpButton(form, pass1ID)
+        activate HB
+        HM->>Form: 注入HelpButton & Label
+        HM->>HB: EnableDragging()
+        HM->>Form: 註冊事件(ControlAdded, FormClosed)
+        deactivate HM
+        deactivate HB
+    end
 
-    Note over User,DB: 啟用幫助模式
-    User->>HB: 點擊按鈕
-    HB->>HB: 檢查EditMode
-    HB->>CH: EnableHelpMode(form, this, pass1ID)
-    CH->>CH: InitializeStateContainers
-    CH->>QS: GetControlHelpDtos(formName, userId)
-    QS->>DB: SELECT控制項說明資料
-    DB-->>QS: 回傳DataTable
-    QS-->>CH: 回傳List<HelpDefinitionDto>
-    CH->>CH: HighlightControls(遞迴高亮)
-    CH->>Form: 修改BackColor為Orange
-    CH->>Form: 攔截Click事件(Reflection)
-    CH->>Form: 設定Cursor為Help
-    Form-->>User: 顯示高亮效果
+    rect rgb(255, 250, 240)
+        Note over User,DB: Phase 2: 啟用幫助模式
+        User->>HB: 點擊按鈕
+        activate HB
+        HB->>HB: 檢查EditMode
+        HB->>CH: EnableHelpMode(form, this, pass1ID)
+        activate CH
+        CH->>CH: InitializeStateContainers()
+        CH->>QS: GetControlHelpDtos(formName, userId)
+        activate QS
+        QS->>DB: SELECT (JOIN HelpDefinition tables)
+        DB-->>QS: DataTable
+        QS->>QS: 轉換為List~HelpDefinitionDto~
+        QS-->>CH: List~HelpDefinitionDto~
+        deactivate QS
+        CH->>CH: HighlightControls(遞迴)
+        CH->>Form: 修改BackColor為Orange
+        CH->>CH: AttachClickEvents(Reflection)
+        CH->>Form: Cursor = Help
+        CH-->>HB: 完成
+        deactivate CH
+        HB->>HB: UpdateVisualState()
+        HB-->>User: 顯示高亮效果
+        deactivate HB
+    end
 
-    Note over User,DB: 點擊控制項查看說明
-    User->>Form: 點擊控制項
-    Form->>CH: Control_Click(代理事件)
-    CH->>CH: ShowHelpText(遞迴尋找可顯示控制項)
-    CH->>HD: new HelpDefinition(formName, controlName, pass1ID)
-    HD->>AS: GetHelpDefinition(className, controlName)
-    AS->>Repo: GetByControl(className, controlName)
-    Repo->>DB: SELECT完整Aggregate(含Department & Mapping)
-    DB-->>Repo: 回傳DataTable
-    Repo->>Repo: Hydration還原Entity
-    Repo-->>AS: 回傳HelpDefinition Entity
-    AS-->>HD: 回傳Entity
-    HD->>HD: 顯示說明內容
-    HD-->>User: 彈出視窗
+    rect rgb(240, 255, 240)
+        Note over User,DB: Phase 3: 查看與編輯說明
+        User->>Form: 點擊控制項
+        Form->>CH: Control_Click(代理事件)
+        activate CH
+        CH->>CH: ShowHelpText(遞迴尋找)
+        CH->>HD: new HelpDefinition(formName, controlName, pass1ID)
+        activate HD
+        HD->>AS: GetHelpDefinition(className, controlName)
+        activate AS
+        AS->>Repo: GetByControl(className, controlName)
+        activate Repo
+        Repo->>DB: SELECT (Aggregate Root + Children)
+        DB-->>Repo: DataTable
+        Repo->>Repo: Hydration (MapToEntity)
+        Repo-->>AS: HelpDefinition Entity
+        deactivate Repo
+        AS-->>HD: HelpDefinition Entity
+        deactivate AS
+        HD->>HD: LoadHelpData()
+        HD-->>User: 顯示說明視窗
+        deactivate HD
+        deactivate CH
+        
+        User->>HD: 編輯說明內容
+        activate HD
+        HD->>AS: SaveHelpDefinition(entity)
+        activate AS
+        AS->>AS: 驗證業務規則
+        AS->>Repo: Save(entity)
+        activate Repo
+        Repo->>DB: UPDATE HelpDefinition<br/>UPDATE Department<br/>UPDATE TargetMapping
+        DB-->>Repo: Success
+        Repo-->>AS: true
+        deactivate Repo
+        AS-->>HD: true
+        deactivate AS
+        HD-->>User: 顯示成功訊息
+        deactivate HD
+    end
 
-    Note over User,DB: 編輯並保存說明
-    User->>HD: 編輯說明內容
-    HD->>AS: SaveHelpDefinition(entity)
-    AS->>AS: 驗證與業務規則
-    AS->>Repo: Save(entity)
-    Repo->>DB: UPDATE/INSERT多表操作
-    DB-->>Repo: 成功
-    Repo-->>AS: 成功
-    AS-->>HD: 成功
-    HD-->>User: 顯示成功訊息
+    rect rgb(255, 240, 240)
+        Note over User,DB: Phase 4: 禁用幫助模式
+        User->>HB: 再次點擊按鈕
+        activate HB
+        HB->>CH: DisableHelpMode(form, pass1ID)
+        activate CH
+        CH->>Form: 還原BackColor
+        CH->>CH: DetachClickEvents(Reflection)
+        CH->>CH: ClearFormData()
+        CH->>Form: Cursor = Default
+        CH-->>HB: 完成
+        deactivate CH
+        HB->>HB: ResetHelpModeState()
+        HB-->>User: 恢復正常狀態
+        deactivate HB
+    end
 
-    Note over User,DB: 禁用幫助模式
-    User->>HB: 再次點擊按鈕
-    HB->>CH: DisableHelpMode(form, pass1ID)
-    CH->>Form: 還原BackColor
-    CH->>Form: 還原Click事件(Reflection)
-    CH->>CH: ClearFormData
-    CH->>Form: 設定Cursor為Default
-    Form-->>User: 恢復正常狀態
-
-    Note over User,DB: 表單關閉清理
-    User->>Form: 關閉表單
-    Form->>CH: Form_FormClosed_Cleanup
-    CH->>CH: 清理ConcurrentDictionary
-    CH->>CH: 移除Form相關資源
+    rect rgb(245, 245, 245)
+        Note over User,DB: Phase 5: 清理資源
+        User->>Form: 關閉表單
+        Form->>CH: Form_FormClosed_Cleanup
+        activate CH
+        CH->>CH: 清理ConcurrentDictionary
+        CH->>CH: 移除Form相關資源
+        deactivate CH
+    end
