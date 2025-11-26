@@ -1,0 +1,59 @@
+graph TB
+    Start["開始高亮顯示"]
+    
+    subgraph "遞迴遍歷控制項"
+        Loop["foreach Control"]
+        Skip{"是系統<br/>控制項?"}
+        Type{"控制項<br/>類型"}
+    end
+    
+    subgraph "Grid 處理"
+        G1["HighlightGridHeaders"]
+        G2["儲存原始顏色"]
+        G3["設定BackColor=Orange"]
+        G4["AttachGridClickEvents"]
+    end
+    
+    subgraph "一般控制項處理"
+        S1["HighlightStandardControl"]
+        S2["檢查是否有說明"]
+        S3["儲存原始顏色"]
+        S4["設定BackColor=Orange"]
+        S5["AttachStandardControlClickEvents"]
+    end
+    
+    subgraph "事件攔截 (Reflection)"
+        R1["取得EventHandlerList"]
+        R2["保存原始Click事件"]
+        R3["移除原始事件"]
+        R4["註冊Proxy事件"]
+    end
+
+    Start --> Loop
+    Loop --> Skip
+    Skip -->|是| Loop
+    Skip -->|否| Type
+    
+    Type -->|Grid| G1
+    G1 --> G2 --> G3 --> G4
+    G4 --> R1
+    
+    Type -->|一般| S1
+    S1 --> S2
+    S2 -->|有說明| S3
+    S2 -->|無說明| S5
+    S3 --> S4 --> S5
+    S5 --> R1
+    
+    R1 --> R2 --> R3 --> R4
+    R4 --> Loop
+
+    classDef loopStyle fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    classDef gridStyle fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    classDef stdStyle fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px
+    classDef reflectStyle fill:#ffccbc,stroke:#d84315,stroke-width:2px
+
+    class Loop,Skip,Type loopStyle
+    class G1,G2,G3,G4 gridStyle
+    class S1,S2,S3,S4,S5 stdStyle
+    class R1,R2,R3,R4 reflectStyle
