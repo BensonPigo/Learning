@@ -1,0 +1,75 @@
+sequenceDiagram
+    autonumber
+    participant User as 使用者
+    participant Form as Form表單
+    participant HM as HelpManager
+    participant HB as HelpButton
+    participant CH as ControlHelp
+    participant QS as SqlHelpQueryService
+    participant HD as HelpDefinition Form
+    participant AS as HelpApplicationService
+    participant Repo as SqlRepository
+    participant DB as Database
+
+    Note over User,DB: 初始化階段
+    Form->>HM: Initialize(pass1ID)
+    HM->>HM: 檢查EnableHelpMode
+    HM->>HB: new HelpButton(form, pass1ID)
+    HM->>Form: 加入HelpButton & Label
+    HM->>Form: 註冊事件(ControlAdded, FormClosed)
+
+    Note over User,DB: 啟用幫助模式
+    User->>HB: 點擊按鈕
+    HB->>HB: 檢查EditMode
+    HB->>CH: EnableHelpMode(form, this, pass1ID)
+    CH->>CH: InitializeStateContainers
+    CH->>QS: GetControlHelpDtos(formName, userId)
+    QS->>DB: SELECT控制項說明資料
+    DB-->>QS: 回傳DataTable
+    QS-->>CH: 回傳List<HelpDefinitionDto>
+    CH->>CH: HighlightControls(遞迴高亮)
+    CH->>Form: 修改BackColor為Orange
+    CH->>Form: 攔截Click事件(Reflection)
+    CH->>Form: 設定Cursor為Help
+    Form-->>User: 顯示高亮效果
+
+    Note over User,DB: 點擊控制項查看說明
+    User->>Form: 點擊控制項
+    Form->>CH: Control_Click(代理事件)
+    CH->>CH: ShowHelpText(遞迴尋找可顯示控制項)
+    CH->>HD: new HelpDefinition(formName, controlName, pass1ID)
+    HD->>AS: GetHelpDefinition(className, controlName)
+    AS->>Repo: GetByControl(className, controlName)
+    Repo->>DB: SELECT完整Aggregate(含Department & Mapping)
+    DB-->>Repo: 回傳DataTable
+    Repo->>Repo: Hydration還原Entity
+    Repo-->>AS: 回傳HelpDefinition Entity
+    AS-->>HD: 回傳Entity
+    HD->>HD: 顯示說明內容
+    HD-->>User: 彈出視窗
+
+    Note over User,DB: 編輯並保存說明
+    User->>HD: 編輯說明內容
+    HD->>AS: SaveHelpDefinition(entity)
+    AS->>AS: 驗證與業務規則
+    AS->>Repo: Save(entity)
+    Repo->>DB: UPDATE/INSERT多表操作
+    DB-->>Repo: 成功
+    Repo-->>AS: 成功
+    AS-->>HD: 成功
+    HD-->>User: 顯示成功訊息
+
+    Note over User,DB: 禁用幫助模式
+    User->>HB: 再次點擊按鈕
+    HB->>CH: DisableHelpMode(form, pass1ID)
+    CH->>Form: 還原BackColor
+    CH->>Form: 還原Click事件(Reflection)
+    CH->>CH: ClearFormData
+    CH->>Form: 設定Cursor為Default
+    Form-->>User: 恢復正常狀態
+
+    Note over User,DB: 表單關閉清理
+    User->>Form: 關閉表單
+    Form->>CH: Form_FormClosed_Cleanup
+    CH->>CH: 清理ConcurrentDictionary
+    CH->>CH: 移除Form相關資源
