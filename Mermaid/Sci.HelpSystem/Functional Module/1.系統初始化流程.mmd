@@ -1,0 +1,47 @@
+graph TB
+    subgraph "應用程式啟動"
+        App["WinForms Application"]
+        Config["App.config<br/>EnableHelpMode=true"]
+    end
+
+    subgraph "HelpManager 初始化"
+        Init["Form.Initialize(pass1ID)"]
+        Check{"EnableHelpMode<br/>==true?"}
+        Add["AddHelpButton()"]
+    end
+
+    subgraph "UI 元件建立"
+        Label["HelpLabel<br/>顯示狀態文字"]
+        Button["HelpButton<br/>切換按鈕"]
+        Tooltip["ToolTip<br/>提示訊息"]
+    end
+
+    subgraph "事件註冊"
+        E1["ControlAdded<br/>事件"]
+        E2["FormClosed<br/>事件"]
+        E3["MouseDown/Move/Up<br/>拖曳事件"]
+    end
+
+    App -->|載入配置| Config
+    App -->|開啟表單| Init
+    Init --> Check
+    Check -->|是| Add
+    Check -->|否| Stop["不啟用幫助系統"]
+    
+    Add --> Label
+    Add --> Button
+    Add --> Tooltip
+    
+    Button --> E1
+    Button --> E2
+    Button --> E3
+
+    classDef appStyle fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef managerStyle fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef uiStyle fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef eventStyle fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+
+    class App,Config appStyle
+    class Init,Check,Add managerStyle
+    class Label,Button,Tooltip uiStyle
+    class E1,E2,E3 eventStyle
