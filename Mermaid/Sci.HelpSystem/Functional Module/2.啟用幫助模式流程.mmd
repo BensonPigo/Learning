@@ -1,0 +1,48 @@
+graph LR
+    subgraph "使用者操作"
+        U1["點擊<br/>HelpButton"]
+    end
+
+    subgraph "HelpButton 處理"
+        B1["HelpButton_Click"]
+        B2{"檢查<br/>EditMode"}
+        B3["切換<br/>_isHelpMode"]
+    end
+
+    subgraph "ControlHelp 協調"
+        C1["EnableHelpMode"]
+        C2["InitializeStateContainers"]
+        C3["載入DTO資料"]
+        C4["HighlightControls"]
+        C5["AttachClickEvents"]
+    end
+
+    subgraph "QueryService 查詢"
+        Q1["GetControlHelpDtos"]
+        Q2["SQL查詢"]
+        Q3["轉換DTO"]
+    end
+
+    U1 --> B1
+    B1 --> B2
+    B2 -->|非編輯模式| B3
+    B2 -->|編輯模式| Msg["顯示錯誤訊息"]
+    B3 --> C1
+    
+    C1 --> C2
+    C2 --> C3
+    C3 --> Q1
+    Q1 --> Q2
+    Q2 --> Q3
+    Q3 --> C4
+    C4 --> C5
+
+    classDef userStyle fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef btnStyle fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    classDef coordStyle fill:#f1f8e9,stroke:#558b2f,stroke-width:2px
+    classDef queryStyle fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+
+    class U1 userStyle
+    class B1,B2,B3,Msg btnStyle
+    class C1,C2,C3,C4,C5 coordStyle
+    class Q1,Q2,Q3 queryStyle
