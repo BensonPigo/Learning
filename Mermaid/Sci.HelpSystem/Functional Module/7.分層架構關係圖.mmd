@@ -1,0 +1,69 @@
+graph TB
+    subgraph "UI 層"
+        UI1["Form"]
+        UI2["HelpButton"]
+        UI3["HelpLabel"]
+    end
+
+    subgraph "基礎設施層"
+        Infra["HelpManager<br/>Bootstrap"]
+    end
+
+    subgraph "UI 協調層"
+        Coord["ControlHelp<br/>Coordinator"]
+    end
+
+    subgraph "應用層"
+        App1["HelpDefinition<br/>Form"]
+        App2["HelpApplicationService"]
+    end
+
+    subgraph "查詢層 CQRS"
+        Query["SqlHelpQueryService"]
+    end
+
+    subgraph "領域層"
+        Domain1["IHelpDefinitionRepository"]
+        Domain2["SqlHelpDefinitionRepository"]
+        Domain3["HelpDefinition<br/>Entity"]
+    end
+
+    subgraph "資料層"
+        Data1["DBProxy"]
+        Data2["SQL Server"]
+    end
+
+    UI1 -.->|注入| Infra
+    Infra -->|建立| UI2
+    Infra -->|建立| UI3
+    UI2 -->|觸發| Coord
+    
+    Coord -->|查詢| Query
+    Coord -->|顯示| App1
+    
+    App1 -->|使用| App2
+    App1 -->|查詢| Query
+    
+    App2 -->|依賴| Domain1
+    Domain2 -.->|實現| Domain1
+    App2 -->|操作| Domain3
+    
+    Query -->|SELECT| Data1
+    Domain2 -->|CRUD| Data1
+    Data1 -->|連線| Data2
+
+    classDef uiClass fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef infraClass fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef coordClass fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef appClass fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef queryClass fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    classDef domainClass fill:#fff9c4,stroke:#f9a825,stroke-width:2px
+    classDef dataClass fill:#ffccbc,stroke:#d84315,stroke-width:2px
+
+    class UI1,UI2,UI3 uiClass
+    class Infra infraClass
+    class Coord coordClass
+    class App1,App2 appClass
+    class Query queryClass
+    class Domain1,Domain2,Domain3 domainClass
+    class Data1,Data2 dataClass
