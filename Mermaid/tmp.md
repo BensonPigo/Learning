@@ -1,3 +1,279 @@
+## 第一部分：系統初始化
+
+```mermaid
+---
+title: P18 包裝掃描作業系統 - 高層級流程
+---
+flowchart TD
+    Start([P18 表單啟動]) --> Init[初始化作業]
+    Init --> |載入完成|MainLoop{主要作業循環}
+    
+    MainLoop --> |選擇 MD Machine|CalibCheck[校正檢查機制]
+    MainLoop --> |掃描箱號|ScanCarton[箱號掃描作業]
+    MainLoop --> |掃描條碼|ScanBarcode[條碼掃描作業]
+    MainLoop --> |RFID 掃描|RFIDScan[RFID 掃描作業]
+    MainLoop --> |報告缺件|PackingError[包裝異常處理]
+    MainLoop --> |關閉表單|CloseCheck{檢查未完成掃描}
+    
+    CalibCheck --> |每15秒檢查|CalibAlert{需要校正?}
+    CalibAlert --> |是|ShowCalibForm[顯示校正表單]
+    CalibAlert --> |否|MainLoop
+    ShowCalibForm --> MainLoop
+    
+    ScanCarton --> LoadCartonData[載入箱號資料]
+    LoadCartonData --> |成功|DisplayCartonInfo[顯示箱號資訊]
+    LoadCartonData --> |失敗|ShowError[顯示錯誤訊息]
+    DisplayCartonInfo --> MainLoop
+    ShowError --> MainLoop
+    
+    ScanBarcode --> ProcessBarcode[處理條碼掃描]
+    ProcessBarcode --> |成功|UpdateQty[更新掃描數量]
+    ProcessBarcode --> |失敗|ShowBarcodeError[顯示條碼錯誤]
+    UpdateQty --> |箱子掃描完成|SaveCartonData[儲存箱號資料]
+    UpdateQty --> |未完成|MainLoop
+    SaveCartonData --> |自動掃描啟用|AutoNextCarton[自動載入下一箱]
+    SaveCartonData --> |手動模式|MainLoop
+    AutoNextCarton --> MainLoop
+    ShowBarcodeError --> MainLoop
+    
+    RFIDScan --> ProcessRFID[處理 RFID 標籤]
+    ProcessRFID --> |驗證成功|BatchUpdateQty[批次更新數量]
+    ProcessRFID --> |驗證失敗|ShowRFIDError[顯示 RFID 錯誤]
+    BatchUpdateQty --> MainLoop
+    ShowRFIDError --> StopRFID[停止 RFID 掃描]
+    StopRFID --> MainLoop
+    
+    PackingError --> ShowErrorForm[顯示異常輸入表單]
+    ShowErrorForm --> UpdateLacking[更新缺件狀態]
+    UpdateLacking --> MainLoop
+  
+    CloseCheck --> |有未完成|ConfirmLacking{確認缺件處理}
+    CloseCheck --> |無未完成|End([結束])
+    ConfirmLacking --> |確認缺件|UpdateLacking
+    ConfirmLacking --> |取消|MainLoop
+    ConfirmLacking --> |放棄|End
+
+    style Start fill:#90EE90
+    style End fill:#FFB6C1
+    style MainLoop fill:#87CEEB
+    style CalibAlert fill:#FFD700
+    style CloseCheck fill:#FFD700
+    style ConfirmLacking fill:#FFD700
+```
+
+``` mermaid
+---
+title: P18 表單初始化流程
+---
+flowchart TD
+    Start([OnFormLoaded]) --> LoadMachine[載入 MD Machine 清單]
+    LoadMachine --> AutoSelectMachine{根據 UserID<br/>自動選擇 Machine}
+    AutoSelectMachine --> |找到|SetMachine[設定 Machine]
+    AutoSelectMachine --> |未找到|SetDefault[設定為空白]
+    
+ SetMachine --> SetupGrids[設定 Grid 欄位]
+  SetDefault --> SetupGrids
+    
+    SetupGrids --> SetupCartonGrid[設定箱號選擇 Grid<br/>gridSelectCartonDetail]
+    SetupCartonGrid --> SetupScanGrid[設定掃描明細 Grid<br/>gridScanDetail]
+    
+    SetupScanGrid --> InitControls[初始化控制項]
+    InitControls --> SetReadOnly[Dest 欄位唯讀]
+    SetReadOnly --> StartTimer[啟動計時器<br/>每15秒檢查校正]
+    
+  StartTimer --> CheckRFID{系統啟用 RFID?}
+    CheckRFID --> |是|ShowRFIDBtn[顯示 RFID 按鈕]
+    CheckRFID --> |否|HideRFIDBtn[隱藏 RFID 按鈕]
+    
+    ShowRFIDBtn --> End([初始化完成])
+    HideRFIDBtn --> End
+
+    style Start fill:#90EE90
+    style End fill:#90EE90
+```
+
+## 第二部分：箱號掃描流程（主要業務邏輯）
+
+```mermaid
+---
+title: P18 箱號掃描作業流程 (TxtScanCartonSP_Validating)
+---
+flowchart TD
+    Start([掃描箱號輸入]) --> CheckMachine{是否選擇<br/>MD Machine?}
+    CheckMachine --> |否|ShowMachineError[提示選擇 MD Machine]
+    CheckMachine --> |是|CheckOldScan{舊箱號有<br/>未完成掃描?}
+    
+    ShowMachineError --> Cancel([取消驗證])
+  
+    CheckOldScan --> |是|ConfirmChange{確認更換箱號?}
+    CheckOldScan --> |否|ParseCartonID[解析箱號]
+  
+    ConfirmChange --> |否|Cancel
+    ConfirmChange --> |是|ProcessLacking[執行缺件關閉]
+    ProcessLacking --> |失敗|RestoreOld[還原舊箱號]
+    ProcessLacking --> |成功|ParseCartonID
+    RestoreOld --> Cancel
+    
+    ParseCartonID --> ClearData[清空掃描區資料]
+    ClearData --> LoadData[載入箱號資料<br/>LoadDatas]
+    
+ LoadData --> |失敗|Cancel
+    LoadData --> |成功|ValidateData{是否有資料?}
+    
+    ValidateData --> |無資料|ShowInvalid[顯示無效箱號]
+    ValidateData --> |有資料|GeneratePKFilter[產生 PK Filter 清單]
+    
+    ShowInvalid --> Cancel
+ 
+ GeneratePKFilter --> LoadSelectCarton[載入箱號選擇清單<br/>LoadSelectCarton]
+    LoadSelectCarton --> CheckCount{箱號數量}
+    
+    CheckCount --> |單箱|CheckScanned{已掃描過?}
+    CheckCount --> |多箱|CheckAutoScan{自動掃描啟用?}
+    
+    CheckScanned --> |是|ConfirmRescan{確認重新掃描?}
+    CheckScanned --> |否|CheckBarcode{需要清空 Barcode?}
+    
+  ConfirmRescan --> |否|ClearAll[清空所有資料]
+    ConfirmRescan --> |是|ClearScanQty[清空掃描數量]
+    
+    ClearAll --> Cancel
+    ClearScanQty --> CheckBarcode
+    
+  CheckBarcode --> |是|ClearBarcode[清空該箱 Barcode]
+    CheckBarcode --> |否|LoadScanDetail
+    
+    ClearBarcode --> CallWebAPI[呼叫 WebAPI 同步]
+    CallWebAPI --> LoadScanDetail[載入掃描明細<br/>LoadScanDetail]
+    
+    CheckAutoScan --> |是|LoadScanDetail
+    CheckAutoScan --> |否|End([掃描箱號完成])
+    
+    LoadScanDetail --> End
+
+    style Start fill:#90EE90
+    style End fill:#90EE90
+    style Cancel fill:#FFB6C1
+    style CheckMachine fill:#FFD700
+    style CheckOldScan fill:#FFD700
+    style ConfirmChange fill:#FFD700
+    style ValidateData fill:#FFD700
+    style CheckCount fill:#FFD700
+    style CheckScanned fill:#FFD700
+    style ConfirmRescan fill:#FFD700
+    style CheckBarcode fill:#FFD700
+    style CheckAutoScan fill:#FFD700
+```
+
+``` mermaid
+---
+title: P18 載入箱號資料流程 (LoadDatas)
+---
+flowchart TD
+    Start([LoadDatas 開始]) --> DefineWhere[定義查詢條件陣列]
+ DefineWhere --> |條件1|Cond1[PackingListID + CTNStartNo<br/>精確匹配]
+    DefineWhere --> |條件2|Cond2[SCICtnNo 匹配]
+    DefineWhere --> |條件3|Cond3[PackingListID 匹配]
+  DefineWhere --> |條件4|Cond4[OrderID 或 CustPoNo 匹配]
+    DefineWhere --> |條件5|Cond5[CustCTN 匹配]
+  
+    Cond1 --> LoopStart{迴圈查詢<br/>每個條件}
+    Cond2 --> LoopStart
+    Cond3 --> LoopStart
+ Cond4 --> LoopStart
+    Cond5 --> LoopStart
+    
+    LoopStart --> ExecuteQuery[執行 SQL 查詢<br/>從 PackingList_Detail]
+    ExecuteQuery --> |DB 錯誤|ShowDBError[顯示資料庫錯誤]
+    ExecuteQuery --> |成功|CheckResult{是否有資料?}
+    
+    ShowDBError --> ReturnFalse([返回 False])
+  
+    CheckResult --> |有資料|BreakLoop[跳出迴圈]
+    CheckResult --> |無資料|NextCondition{還有下個條件?}
+    
+    NextCondition --> |是|LoopStart
+    NextCondition --> |否|ReturnTrue([返回 True])
+    
+    BreakLoop --> ReturnTrue
+
+    style Start fill:#90EE90
+    style ReturnTrue fill:#90EE90
+    style ReturnFalse fill:#FFB6C1
+    style LoopStart fill:#87CEEB
+    style CheckResult fill:#FFD700
+    style NextCondition fill:#FFD700
+```
+
+```mermaid
+---
+title: P18 載入掃描明細流程 (LoadScanDetail)
+---
+flowchart TD
+    Start([LoadScanDetail 開始]) --> CheckAutoScan{自動掃描模式?}
+    
+  CheckAutoScan --> |是|FindFirstUnscan[找出第一個未掃完的箱子<br/>依 PKseq 排序]
+    CheckAutoScan --> |否|GetRowData[取得指定列資料]
+    
+    FindFirstUnscan --> GetRowData
+    GetRowData --> ValidateData{資料有效?}
+    
+    ValidateData --> |否|ReturnSuccess([返回成功])
+    ValidateData --> |是|CheckCurrentScan{目前有未完成掃描?}
+    
+    CheckCurrentScan --> |否|ProcessCartonData
+    CheckCurrentScan --> |是|CompareCurrent{與目前選擇<br/>是同一箱?}
+    
+    CompareCurrent --> |是|ReturnSuccess
+    CompareCurrent --> |否|ExecLackingClose[執行缺件關閉<br/>LackingClose]
+    
+    ExecLackingClose --> |失敗|ReturnSuccess
+    ExecLackingClose --> |成功|ReloadData[重新載入資料<br/>LoadDatas]
+    ReloadData --> ReloadCarton[重新載入箱號清單<br/>LoadSelectCarton]
+    
+  ReloadCarton --> ProcessCartonData[處理箱號資料]
+    ProcessCartonData --> CheckAllScanned{該箱已全部掃描?}
+    
+    CheckAllScanned --> |是|ConfirmRescan{確認重新掃描?}
+    CheckAllScanned --> |否|CheckBarcodeNull
+    
+    ConfirmRescan --> |否|FocusEAN[切換到 EAN 頁籤]
+    ConfirmRescan --> |是|ClearQty[清空該箱掃描數量<br/>ClearScanQty]
+    
+    ClearQty --> ReGetData[重新取得該列資料]
+    ReGetData --> CheckBarcodeNull
+    FocusEAN --> ReturnSuccess
+    
+    CheckBarcodeNull{需要清空 Barcode?}
+    CheckBarcodeNull --> |是|ClearBarcode[清空該箱 Barcode]
+    CheckBarcodeNull --> |否|CheckRFIDChange
+    
+    ClearBarcode --> CallAPI[呼叫 WebAPI 同步]
+  CallAPI --> CheckRFIDChange
+    
+    CheckRFIDChange{箱號有變更?}
+    CheckRFIDChange --> |是|CleanRFID[清空 RFID 暫存資料]
+CheckRFIDChange --> |否|BindData
+    
+    CleanRFID --> BindData[綁定掃描明細資料<br/>到 scanDetailBS]
+    BindData --> LoadHead[載入表頭資料<br/>LoadHeadData]
+  LoadHead --> TabFocus[切換到 EAN 頁籤<br/>Tab_Focus]
+    TabFocus --> SetPosition[設定游標位置]
+    SetPosition --> ReturnSuccess
+
+style Start fill:#90EE90
+    style ReturnSuccess fill:#90EE90
+    style CheckAutoScan fill:#87CEEB
+    style ValidateData fill:#FFD700
+    style CheckCurrentScan fill:#FFD700
+    style CompareCurrent fill:#FFD700
+    style CheckAllScanned fill:#FFD700
+    style ConfirmRescan fill:#FFD700
+    style CheckBarcodeNull fill:#FFD700
+    style CheckRFIDChange fill:#FFD700
+```
+
+---
 
 ## 第三部分：條碼掃描流程（核心業務邏輯）
 
@@ -171,10 +447,10 @@ flowchart TD
     style CheckEventType fill:#FFD700
 ```
 
+```mermaid
 ---
 title: P18 完成掃描後處理 (AfterCompleteScanCarton)
 ---
-```mermaid
 flowchart TD
     Start([AfterCompleteScanCarton]) --> QueryDB[查詢 DB 取得<br/>ScanName 和 PassName]
   QueryDB --> UpdateDT[更新 dt_scanDetail<br/>中的對應欄位]
@@ -191,4 +467,266 @@ flowchart TD
     style Start fill:#90EE90
     style End fill:#90EE90
     style CheckAllComplete fill:#FFD700
+```
+
+---
+
+## 第四部分：RFID 掃描流程（平行分支）
+
+```mermaid
+---
+title: P18 RFID 掃描主流程 (HandleRFIDScanResult)
+---
+flowchart TD
+    Start([RFID 掃描結果回呼]) --> Validate[驗證前置條件<br/>ValidatePreConditions]
+    Validate --> |失敗|End([結束])
+    Validate --> |成功|PrepareContext[準備掃描上下文<br/>PrepareRFIDScanContext]
+    
+    PrepareContext --> |失敗|End
+    PrepareContext --> |成功|ProcessTags[處理所有標籤<br/>ProcessAllTags]
+    
+ ProcessTags --> HandleResults[處理掃描結果<br/>HandleScanResults]
+    HandleResults --> End
+
+    style Start fill:#90EE90
+ style End fill:#90EE90
+```
+
+```mermaid
+---
+title: P18 處理單一 RFID 標籤 (ProcessSingleTag)
+---
+flowchart TD
+    Start([ProcessSingleTag]) --> CheckBrand{品牌類型}
+    
+    CheckBrand --> |LLL|ProcessLLL[處理 LLL 標籤<br/>ProcessLLLTag]
+    CheckBrand --> |NIKE|ProcessNike[處理 NIKE 標籤<br/>ProcessNikeTag]
+    CheckBrand --> |其他|SetSuccess[直接設定成功]
+    
+    ProcessLLL --> SetStatus[設定掃描狀態]
+    ProcessNike --> SetStatus
+    SetSuccess --> SetStatus
+    
+    SetStatus --> ReturnResult([返回掃描結果])
+
+    style Start fill:#90EE90
+    style ReturnResult fill:#90EE90
+    style CheckBrand fill:#87CEEB
+```
+
+```mermaid
+---
+title: P18 處理 LLL RFID 標籤 (ProcessLLLTag)
+---
+flowchart TD
+    Start([ProcessLLLTag]) --> ParseEPC[解析 EPC 資料<br/>GetRFIDLLLScanResult]
+    ParseEPC --> ExtractFields[提取欄位<br/>Binary/Header/ProductCode<br/>SerialNumber/VendorCode]
+    ExtractFields --> CheckUPC{UPC 是否空白?}
+    
+    CheckUPC --> |是|ReturnEPCNotFound[返回: EPCNotFound 錯誤]
+    CheckUPC --> |否|ValidateBarcode[驗證 Barcode<br/>ValidateUPCBarcode]
+    
+    ValidateBarcode --> |有錯誤|ReturnValidError[返回: EPCValidError 錯誤]
+    ValidateBarcode --> |無錯誤|ReturnSuccess([返回成功])
+
+    style Start fill:#90EE90
+    style ReturnSuccess fill:#90EE90
+    style ReturnEPCNotFound fill:#FFB6C1
+    style ReturnValidError fill:#FFB6C1
+    style CheckUPC fill:#FFD700
+```
+
+```mermaid
+---
+title: P18 處理 NIKE RFID 標籤 (ProcessNikeTag)
+---
+flowchart TD
+    Start([ProcessNikeTag]) --> QueryUPC[查詢 UPC<br/>GetRFIDNikeScanResult]
+  QueryUPC --> CheckUPC{UPC 是否空白?}
+    
+    CheckUPC --> |是|ReturnEPCNotFound[返回: EPCNotFound 錯誤]
+    CheckUPC --> |否|ValidateBarcode[驗證 Barcode<br/>ValidateUPCBarcode]
+    
+    ValidateBarcode --> |有錯誤|ReturnValidError[返回: EPCValidError 錯誤]
+    ValidateBarcode --> |無錯誤|ReturnSuccess([返回成功])
+
+    style Start fill:#90EE90
+    style ReturnSuccess fill:#90EE90
+    style ReturnValidError fill:#FFB6C1
+    style ReturnEPCNotFound fill:#FFB6C1
+    style CheckUPC fill:#FFD700
+```
+
+```mermaid
+---
+title: P18 處理 RFID 掃描結果 (HandleScanResults)
+---
+flowchart TD
+    Start([HandleScanResults]) --> FilterErrors[過濾出失敗的結果]
+    FilterErrors --> ShowErrors[顯示錯誤訊息<br/>ShowErrorMessages]
+    ShowErrors --> CheckHasResults{是否有任何結果?}
+    
+    CheckHasResults --> |是|GenerateSQL[產生 INSERT SQL<br/>GenerateInsertSQL]
+ CheckHasResults --> |否|CheckStop
+    
+GenerateSQL --> ExecuteSQL[執行 SQL<br/>ExecuteInsertSQL]
+    ExecuteSQL --> CheckStop{是否需要停止?}
+    
+    CheckStop --> |是|StopRFID[停止 RFID 掃描<br/>StopRFIDReaderScan]
+  CheckStop --> |否|End([結束])
+    
+    StopRFID --> End
+
+    style Start fill:#90EE90
+    style End fill:#90EE90
+    style CheckHasResults fill:#FFD700
+    style CheckStop fill:#FFD700
+```
+
+```mermaid
+---
+title: P18 顯示 RFID 錯誤訊息 (ShowErrorMessages)
+---
+flowchart TD
+    Start([ShowErrorMessages]) --> CheckEmpty{是否有錯誤?}
+    CheckEmpty --> |否|ReturnFalse([返回 False<br/>不需停止])
+    CheckEmpty --> |是|CheckBrand{品牌類型}
+  
+    CheckBrand --> |非 NIKE|ShowGeneric[顯示通用錯誤<br/>Invalid barcode]
+    CheckBrand --> |NIKE|GroupErrors[依錯誤類型分組]
+    
+    ShowGeneric --> ReturnTrue([返回 True<br/>需要停止])
+    
+    GroupErrors --> LoopErrors{迴圈處理<br/>每種錯誤類型}
+ 
+    LoopErrors --> |EPCNotFound|ShowEPCNotFound[EPC Data not found]
+    LoopErrors --> |EPCValidError|ShowValidError[EPC exists, UPC not matched]
+  LoopErrors --> |ProcessingError|ShowProcessError[Processing error: 訊息]
+  
+    ShowEPCNotFound --> ReturnTrue
+ ShowValidError --> ReturnTrue
+    ShowProcessError --> ReturnTrue
+
+    style Start fill:#90EE90
+  style ReturnFalse fill:#90EE90
+    style ReturnTrue fill:#FFB6C1
+    style CheckEmpty fill:#FFD700
+    style CheckBrand fill:#87CEEB
+    style LoopErrors fill:#87CEEB
+```
+
+---
+
+## 第五部分：輔助功能（貫穿整個流程）
+
+```mermaid
+---
+title: P18 缺件關閉處理 (LackingClose)
+---
+flowchart TD
+    Start([LackingClose]) --> CheckCondition{掃描數量 > 0<br/>且不等於總數量?}
+    
+    CheckCondition --> |否|ReturnTrue([返回 True])
+    CheckCondition --> |是|ShowDialog[顯示缺件確認對話框<br/>P18_MessageBox]
+ 
+    ShowDialog --> |Yes|UpdateLacking[更新缺件狀態<br/>UpdateLackingStatus]
+  ShowDialog --> |No|ReturnFalse([返回 False])
+    ShowDialog --> |Cancel|CleanRFID[清空 RFID 暫存]
+    
+    UpdateLacking --> CleanRFID
+    CleanRFID --> ReturnTrue
+
+    style Start fill:#90EE90
+    style ReturnTrue fill:#90EE90
+    style ReturnFalse fill:#FFB6C1
+    style CheckCondition fill:#FFD700
+```
+
+```mermaid
+---
+title: P18 更新缺件狀態 (UpdateLackingStatus)
+---
+flowchart TD
+    Start([UpdateLackingStatus]) --> GetData[取得 scanDetailBS 資料]
+    GetData --> CheckEmpty{資料是否為空?}
+    
+    CheckEmpty --> |是|End([結束])
+    CheckEmpty --> |否|CalcQty[計算掃描數量]
+    
+    CalcQty --> CheckQty{掃描數量 > 0?}
+    CheckQty --> |否|FocusInput[游標停留在原地]
+    CheckQty --> |是|BuildSQL[建立更新 SQL]
+    
+    FocusInput --> End
+ 
+    BuildSQL --> LoopRows{迴圈處理<br/>每筆明細}
+    LoopRows --> UpdateRow[更新 PackingList_Detail<br/>設定 Lacking=1<br/>PackingReasonERID<br/>ErrQty/AuditQCName]
+    UpdateRow --> OutputID[輸出更新的 ID<br/>到暫存表]
+    
+    OutputID --> |所有列處理完|QueryIDs[查詢所有更新的 ID]
+    QueryIDs --> ExecuteSQL[執行 SQL]
+
+    ExecuteSQL --> |失敗|ShowError[顯示錯誤]
+  ExecuteSQL --> |成功|CallAPI[呼叫 WebAPI 同步]
+    
+    ShowError --> End
+    CallAPI --> AfterComplete[執行完成後處理<br/>AfterCompleteScanCarton]
+    AfterComplete --> ShowSuccess[顯示成功訊息]
+    ShowSuccess --> End
+
+    style Start fill:#90EE90
+    style End fill:#90EE90
+    style CheckEmpty fill:#FFD700
+    style CheckQty fill:#FFD700
+    style LoopRows fill:#87CEEB
+```
+
+```mermaid
+---
+title: P18 校正檢查機制 (alert_Calibration)
+---
+flowchart TD
+    Start([Timer 觸發<br/>每15秒]) --> CheckEnabled{自動校正啟用?}
+    CheckEnabled --> |否|End([結束])
+    CheckEnabled --> |是|CheckTab{目前在<br/>掃箱頁籤?}
+    
+    CheckTab --> |否|CheckFirst{是否第一次?}
+    CheckTab --> |是|CheckFirst
+    
+    CheckFirst --> |否|End
+    CheckFirst --> |是|QueryDB[查詢最新校正記錄]
+    
+    QueryDB --> |無記錄|End
+    QueryDB --> |有記錄|CheckAllPoints{9 個校正點<br/>都完成?}
+    
+    CheckAllPoints --> |否|End
+    CheckAllPoints --> |是|GetTime[取得校正時間]
+    
+    GetTime --> DisplayTime[顯示下次校正時間]
+    DisplayTime --> GetCurrent[取得目前時間]
+    GetCurrent --> CheckFirstTime{是否第一次載入?}
+    
+ CheckFirstTime --> |是|CompareFirst{距離校正時間<br/>超過1小時?}
+    CheckFirstTime --> |否|CompareExact{剛好1小時整?}
+    
+    CompareFirst --> |是|StopTimer[停止計時器]
+    CompareFirst --> |否|SetFlag[設定非第一次]
+    
+    SetFlag --> End
+    
+    CompareExact --> |是|StopTimer
+    CompareExact --> |否|End
+    
+    StopTimer --> ShowAlert[顯示警告訊息<br/>AlterMSg]
+    ShowAlert --> End
+
+    style Start fill:#90EE90
+    style End fill:#90EE90
+    style CheckEnabled fill:#FFD700
+    style CheckTab fill:#FFD700
+    style CheckFirst fill:#FFD700
+    style CheckAllPoints fill:#FFD700
+    style CheckFirstTime fill:#FFD700
+    style CompareFirst fill:#FFD700
+    style CompareExact fill:#FFD700
 ```
